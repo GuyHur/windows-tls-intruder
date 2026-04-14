@@ -1,0 +1,31 @@
+#?[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "windows-tls-intruder"
+version = "0.1.0"
+description = "Frida-based TLS/socket traffic interceptor with interactive web UI"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "frida>=16.5",
+    "psutil>=6.1",
+    "pydantic-settings>=2.7",
+    "websockets>=14.1",
+    "Pillow>=10.0",
+]
+
+[project.scripts]
+tls-intruder = "intruder.app:main"
+
+[tool.setuptools.packages.find]
+include = ["intruder*"]
+
+[tool.setuptools.package-data]
+"*" = ["*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
