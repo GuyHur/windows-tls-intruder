@@ -4,7 +4,7 @@ import { useWs, type WsEvent } from "./useWs";
 import { b64ToBytes, bytesToB64, hexDump, parseHex } from "./hex";
 
 interface LogEntry extends PendingMsg {
-  status: "pending" | "resolved";
+  status: "pending" | "resolved" | "forwarded";
   action?: string;
 }
 
@@ -14,11 +14,17 @@ export function App() {
   const [selected, setSelected] = useState<LogEntry | null>(null);
   const [tab, setTab] = useState<"traffic" | "pending">("traffic");
   const [sidebarTab, setSidebarTab] = useState<"session" | "processes">("processes");
+  const [interceptEnabled, setInterceptEnabled] = useState(false);
 
   const onWs = useCallback((ev: WsEvent) => {
     if (ev.type === "pending") {
       const msg = ev.message as PendingMsg;
       const entry: LogEntry = { ...msg, status: "pending" };
+      setLog((prev) => [entry, ...prev]);
+    }
+    if (ev.type === "auto_forwarded") {
+      const msg = ev.message as PendingMsg;
+      const entry: LogEntry = { ...msg, status: "forwarded" };
       setLog((prev) => [entry, ...prev]);
     }
     if (ev.type === "resolved") {
@@ -34,6 +40,9 @@ export function App() {
     if (ev.type === "session_destroyed") {
       setSessions((prev) => prev.filter((s) => s.id !== ev.session_id));
     }
+    if (ev.type === "intercept_changed") {
+      setInterceptEnabled(ev.enabled as boolean);
+    }
   }, []);
 
   const { connected } = useWs(onWs);
@@ -43,7 +52,16 @@ export function App() {
     api.pending().then((r) =>
       setLog(r.pending.map((m) => ({ ...m, status: "pending" as const }))),
     );
+    api.getIntercept().then((r) => setInterceptEnabled(r.enabled));
   }, []);
+
+  const toggleIntercept = async () => {
+    try {
+      await api.setIntercept(!interceptEnabled);
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
 
   const [mode, setMode] = useState<"spawn" | "attach">("attach");
   const [target, setTarget] = useState("");
@@ -102,6 +120,14 @@ export function App() {
         <span style={{ fontSize: 12, color: "var(--text-dim)" }}>
           {sessions.length} session{sessions.length !== 1 && "s"}
         </span>
+        <div style={{ flex: 1 }} />
+        <button
+          className={`btn btn-sm intercept-btn ${interceptEnabled ? "intercept-on" : "intercept-off"}`}
+          onClick={toggleIntercept}
+          title={interceptEnabled ? "Intercept is ON — click to pass traffic through" : "Intercept is OFF — click to hold packets for review"}
+        >
+          Intercept: {interceptEnabled ? "ON" : "OFF"}
+        </button>
       </div>
 
       <div className="panels">
@@ -323,6 +349,9 @@ function ProcessRow({ proc, onAttach }: { proc: ProcessInfo; onAttach: (p: Proce
 
 // ── Traffic table ────────────────────────────────────────────────────
 
+type SortField = "direction" | "data_len" | "module" | "pid" | "status" | "created_at";
+type SortDir = "asc" | "desc";
+
 function TrafficTable({
   items,
   selected,
@@ -333,22 +362,61 @@ function TrafficTable({
   onSelect: (e: LogEntry) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement>(null);
+  const [sortField, setSortField] = useState<SortField | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>("asc");
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDir("asc");
+    }
+  };
+
+  const sorted = sortField
+    ? [...items].sort((a, b) => {
+        let av: string | number, bv: string | number;
+        switch (sortField) {
+          case "direction": av = a.direction; bv = b.direction; break;
+          case "data_len":  av = a.data_len;  bv = b.data_len;  break;
+          case "module":    av = (a.metadata?.m as string) ?? ""; bv = (b.metadata?.m as string) ?? ""; break;
+          case "pid":       av = a.pid;       bv = b.pid;       break;
+          case "status":    av = a.status;    bv = b.status;    break;
+          case "created_at": av = a.created_at; bv = b.created_at; break;
+          default:          av = 0;           bv = 0;
+        }
+        if (av < bv) return sortDir === "asc" ? -1 : 1;
+        if (av > bv) return sortDir === "asc" ? 1 : -1;
+        return 0;
+      })
+    : items;
+
+  const SortTh = ({ field, children }: { field: SortField; children: React.ReactNode }) => (
+    <th
+      onClick={() => handleSort(field)}
+      style={{ cursor: "pointer", userSelect: "none", whiteSpace: "nowrap" }}
+    >
+      {children}
+      {sortField === field ? (sortDir === "asc" ? " ↑" : " ↓") : " ·"}
+    </th>
+  );
 
   return (
     <>
       <table className="traffic">
         <thead>
           <tr>
-            <th>Dir</th>
-            <th>Size</th>
-            <th>Module</th>
-            <th>PID</th>
-            <th>Status</th>
-            <th>Time</th>
+            <SortTh field="direction">Dir</SortTh>
+            <SortTh field="data_len">Size</SortTh>
+            <SortTh field="module">Module</SortTh>
+            <SortTh field="pid">PID</SortTh>
+            <SortTh field="status">Status</SortTh>
+            <SortTh field="created_at">Time</SortTh>
           </tr>
         </thead>
         <tbody>
-          {items.map((e) => (
+          {sorted.map((e) => (
             <tr
               key={e.id}
               onClick={() => onSelect(e)}
@@ -363,8 +431,8 @@ function TrafficTable({
               </td>
               <td>{e.pid}</td>
               <td>
-                <span className={`badge ${e.status === "pending" ? "badge-pending" : "badge-resolved"}`}>
-                  {e.status === "resolved" ? e.action : "pending"}
+                <span className={`badge ${e.status === "pending" ? "badge-pending" : e.status === "forwarded" ? "badge-forwarded" : "badge-resolved"}`}>
+                  {e.status === "resolved" ? e.action : e.status === "forwarded" ? "auto" : "pending"}
                 </span>
               </td>
               <td style={{ fontSize: 12, color: "var(--text-dim)" }}>

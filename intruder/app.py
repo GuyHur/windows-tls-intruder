@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from intruder.config import settings
+from intruder.intercept_state import intercept_state
 from intruder.models import ResolveAction
 from intruder.pending import pending_store
 from intruder.processes import get_icon_png, list_processes
@@ -85,6 +86,10 @@ class AttachRequest(BaseModel):
 class ResolveRequest(BaseModel):
     action: ResolveAction
     data_b64: str | None = None
+
+
+class InterceptRequest(BaseModel):
+    enabled: bool
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +166,22 @@ async def get_process_icon(pid: int):
         raise HTTPException(status_code=404, detail="No icon available")
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "public, max-age=3600"})
+
+
+# ---------------------------------------------------------------------------
+# REST — intercept toggle
+# ---------------------------------------------------------------------------
+
+@app.get("/api/intercept")
+async def get_intercept():
+    return {"enabled": intercept_state.enabled}
+
+
+@app.post("/api/intercept")
+async def set_intercept(req: InterceptRequest):
+    intercept_state.enabled = req.enabled
+    await hub.broadcast({"type": "intercept_changed", "enabled": req.enabled})
+    return {"enabled": intercept_state.enabled}
 
 
 # ---------------------------------------------------------------------------
