@@ -7,6 +7,8 @@ from intruder.models import Direction, ResolveAction
 from intruder.router import MessageRouter
 
 
+
+
 class RouterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.router = MessageRouter()
@@ -28,8 +30,10 @@ class RouterTests(unittest.TestCase):
         self.router.on_message("s1", 100, script, msg, None)
         script.post.assert_not_called()
 
+    @patch("intruder.router.intercept_state")
     @patch("intruder.router.pending_store")
-    def test_send_message_enqueues_and_posts_response(self, mock_store) -> None:
+    def test_send_message_enqueues_and_posts_response(self, mock_store, mock_intercept) -> None:
+        mock_intercept.enabled = True
         mock_store.enqueue.return_value = (ResolveAction.FORWARD, None)
 
         script = MagicMock()
@@ -49,8 +53,10 @@ class RouterTests(unittest.TestCase):
         self.assertEqual(posted["type"], "m1")
         self.assertEqual(posted["data"], list(b"hello"))
 
+    @patch("intruder.router.intercept_state")
     @patch("intruder.router.pending_store")
-    def test_replace_action_posts_replacement(self, mock_store) -> None:
+    def test_replace_action_posts_replacement(self, mock_store, mock_intercept) -> None:
+        mock_intercept.enabled = True
         mock_store.enqueue.return_value = (ResolveAction.REPLACE, b"modified")
 
         script = MagicMock()
@@ -62,8 +68,10 @@ class RouterTests(unittest.TestCase):
         posted = script.post.call_args[0][0]
         self.assertEqual(posted["data"], list(b"modified"))
 
+    @patch("intruder.router.intercept_state")
     @patch("intruder.router.pending_store")
-    def test_drop_action_posts_empty(self, mock_store) -> None:
+    def test_drop_action_posts_empty(self, mock_store, mock_intercept) -> None:
+        mock_intercept.enabled = True
         mock_store.enqueue.return_value = (ResolveAction.DROP, None)
 
         script = MagicMock()
