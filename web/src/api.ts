@@ -62,4 +62,11 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action, data_b64 }),
     }),
+  getIntercept: () => json<{ enabled: boolean }>("/api/intercept"),
+  setIntercept: (enabled: boolean) =>
+    json<{ enabled: boolean }>("/api/intercept", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    }),
 };
