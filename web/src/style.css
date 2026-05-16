@@ -39,6 +39,12 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .dot-on  { background: var(--green); }
 .dot-off { background: var(--red); }
 
+.intercept-btn { font-weight: 700; letter-spacing: .04em; }
+.intercept-off { color: var(--text-dim); border-color: var(--border); }
+.intercept-off:hover { color: var(--text); background: var(--border); }
+.intercept-on  { color: #000; background: var(--red); border-color: var(--red); }
+.intercept-on:hover { opacity: .85; background: var(--red); }
+
 .panels {
   flex: 1; display: grid;
   grid-template-columns: 340px 1fr;
@@ -198,8 +204,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
   display: inline-block; padding: 1px 6px; border-radius: 3px;
   font-size: 11px; font-weight: 600; letter-spacing: .03em;
 }
-.badge-pending  { background: var(--orange); color: #000; }
-.badge-resolved { background: var(--green); color: #000; }
+.badge-pending   { background: var(--orange); color: #000; }
+.badge-resolved  { background: var(--green); color: #000; }
+.badge-forwarded { background: var(--border); color: var(--text-dim); }
 
 /* ── Detail / hex view ────────────────────────────────────────────── */
 .detail-pane {

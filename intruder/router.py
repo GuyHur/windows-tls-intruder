@@ -12,6 +12,7 @@ import logging
 import re
 from typing import Any, Optional
 
+from intruder.intercept_state import intercept_state
 from intruder.models import Direction, InterceptedMessage, ResolveAction
 from intruder.pending import pending_store
 from intruder.ws_hub import hub
@@ -112,19 +113,31 @@ class MessageRouter:
             metadata=metadata,
         )
 
-        self._broadcast_event({
-            "type": "pending",
-            "message": {
-                "id": intercepted.id,
-                "session_id": session_id,
-                "pid": pid,
-                "direction": direction.value,
-                "data_b64": base64.b64encode(intercepted.data).decode(),
-                "data_len": len(intercepted.data),
-                "metadata": metadata,
-                "created_at": intercepted.created_at,
-            },
-        })
+        msg_dict = {
+            "id": intercepted.id,
+            "session_id": session_id,
+            "pid": pid,
+            "direction": direction.value,
+            "data_b64": base64.b64encode(intercepted.data).decode(),
+            "data_len": len(intercepted.data),
+            "metadata": metadata,
+            "created_at": intercepted.created_at,
+        }
+
+        if not self._should_intercept(intercepted):
+            self._broadcast_event({"type": "auto_forwarded", "message": msg_dict})
+            try:
+                script.post({
+                    "type": msg_id,
+                    "id": msg_id,
+                    "data": list(intercepted.data),
+                    "metadata": metadata,
+                })
+            except Exception:
+                log.exception("Failed to post auto-forward response for %s", msg_id)
+            return
+
+        self._broadcast_event({"type": "pending", "message": msg_dict})
 
         action, replacement = pending_store.enqueue(intercepted)
 
@@ -150,6 +163,17 @@ class MessageRouter:
             })
         except Exception:
             log.exception("Failed to post response for %s back to Frida script", msg_id)
+
+    def _should_intercept(self, msg: InterceptedMessage) -> bool:
+        """Returns True if this message should be held for manual review.
+
+        This is the single extension point for future filter logic:
+        add per-message filter checks here without changing any other code.
+        """
+        if not intercept_state.enabled:
+            return False
+        # Future: check message filters here
+        return True
 
     def _broadcast_event(self, event: dict) -> None:
         if self._loop is not None:
