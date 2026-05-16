@@ -1,0 +1,8 @@
+fastapi>=0.115
+uvicorn[standard]>=0.34
+frida>=16.5
+psutil>=6.1
+pydantic-settings>=2.7
+websockets>=14.1
+Pillow>=10.0
+httpx>=0.28
